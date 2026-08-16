@@ -142,6 +142,7 @@ function moverExtremo(tipo, fecha) {
     finVisible = destino;
   }
   cargarTodo();
+  guardarPreferencias();
 }
 
 // ---------------------- API ----------------------
@@ -157,6 +158,32 @@ async function api(ruta, opciones = {}) {
   const data = await r.json().catch(() => null);
   if (!r.ok) throw new Error(data && data.detail ? data.detail : `Error ${r.status}`);
   return data;
+}
+
+// ---------------------- Preferencias ----------------------
+/** Fecha ISO yyyy-mm-dd para persistir preferencias. */
+function fmtDiaISO(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Parsea una fecha ISO yyyy-mm-dd a medianoche local (o null). */
+function parseDiaISO(s) {
+  if (!s) return null;
+  const partes = s.split("-").map(Number);
+  if (partes.length !== 3 || partes.some(n => !Number.isFinite(n))) return null;
+  return new Date(partes[0], partes[1] - 1, partes[2]);
+}
+
+/** Guarda el tema y la posición de la vista en el servidor (sin bloquear). */
+function guardarPreferencias() {
+  api("/api/preferencias", {
+    method: "PUT",
+    body: JSON.stringify({
+      tema: document.documentElement.dataset.theme || "claro",
+      inicio_visible: fmtDiaISO(inicioVisible),
+      fin_visible: fmtDiaISO(finVisible)
+    })
+  }).catch(() => null);
 }
 
 // ---------------------- Carga de datos ----------------------
@@ -541,6 +568,7 @@ function renderMiniCal() {
       finVisible = new Date(inicioVisible);
       finVisible.setDate(inicioVisible.getDate() + 6);
       cargarTodo();
+      guardarPreferencias();
     });
     // Las casillas con anillo también se pueden arrastrar desde el mini calendario
     if (d.classList.contains("ring-start") || d.classList.contains("ring-end")) {
@@ -945,9 +973,24 @@ async function init() {
   const me = await api("/api/auth/me").catch(() => null);
   if (!me || !me.autenticado) { location.href = "/"; return; }
 
-  // Modo oscuro (switch simple, persistido en localStorage)
+  // Preferencias persistidas en el servidor (tema y posición de los anillos)
+  const prefs = await api("/api/preferencias").catch(() => null);
+  if (prefs && (prefs.tema === "oscuro" || prefs.tema === "claro")) {
+    document.documentElement.dataset.theme = prefs.tema;
+    localStorage.setItem("tema", prefs.tema);
+  }
+  if (prefs) {
+    const iniPref = parseDiaISO(prefs.inicio_visible);
+    const finPref = parseDiaISO(prefs.fin_visible);
+    if (iniPref && finPref && iniPref < finPref) {
+      inicioVisible = iniPref;
+      finVisible = finPref;
+    }
+  }
+
+  // Modo oscuro (switch simple, persistido en el servidor)
   const btnTema = document.getElementById("btn-tema");
-  const temaGuardado = localStorage.getItem("tema") || "claro";
+  const temaGuardado = document.documentElement.dataset.theme || localStorage.getItem("tema") || "claro";
   document.documentElement.dataset.theme = temaGuardado;
   btnTema.title = temaGuardado === "oscuro" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
   btnTema.onclick = () => {
@@ -955,17 +998,20 @@ async function init() {
     document.documentElement.dataset.theme = actual;
     localStorage.setItem("tema", actual);
     btnTema.title = actual === "oscuro" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+    guardarPreferencias();
   };
 
   document.getElementById("btn-prev").onclick = () => {
     inicioVisible.setDate(inicioVisible.getDate() - 7);
     finVisible.setDate(finVisible.getDate() - 7);
     cargarTodo();
+    guardarPreferencias();
   };
   document.getElementById("btn-next").onclick = () => {
     inicioVisible.setDate(inicioVisible.getDate() + 7);
     finVisible.setDate(finVisible.getDate() + 7);
     cargarTodo();
+    guardarPreferencias();
   };
   document.getElementById("btn-hoy").onclick = () => {
     inicioVisible = lunesDe(new Date());
@@ -973,6 +1019,7 @@ async function init() {
     finVisible.setDate(finVisible.getDate() + 6);
     mesMini = new Date();
     cargarTodo();
+    guardarPreferencias();
   };
   document.getElementById("btn-crear").onclick = () => abrirModalTarea();
   document.getElementById("btn-cancelar").onclick = cerrarModalTarea;
@@ -1061,6 +1108,8 @@ async function init() {
   };
 
   cargarTodo();
+  // Sincroniza al servidor el estado actual (tema del navegador y vista)
+  if (prefs) guardarPreferencias();
 
   // Línea "ahora" se refresca cada minuto si hoy está en la vista
   setInterval(() => {

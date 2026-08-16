@@ -70,6 +70,13 @@ DDL_STATEMENTS: list[str] = [
         FOREIGN KEY (tarea_id) REFERENCES tareas(id) ON DELETE CASCADE
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS preferencias (
+        clave TEXT PRIMARY KEY,
+        valor TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+    )
+    """,
 ]
 
 # Índices que agilizan las consultas del motor y de la API

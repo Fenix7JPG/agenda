@@ -29,7 +29,8 @@ def limpiar_bd():
     from app.db import db
 
     db.init_schema()
-    for tabla in ("horario_generado", "tareas_no_programadas", "tareas"):
+    for tabla in ("horario_generado", "tareas_no_programadas", "tareas",
+                  "preferencias"):
         db.conn.execute(f"DELETE FROM {tabla}")
     db.commit()
     db.close()

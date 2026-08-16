@@ -13,7 +13,8 @@ añade encima:
 - Base de datos dual: SQLite local o Turso (nube), configurable por
   variables de entorno sin tocar código.
 - API REST (FastAPI) + suite de pruebas completa.
-- Modo oscuro con interruptor (persistido en el navegador).
+- Modo oscuro con interruptor y posición de la vista (anillos verde y rojo)
+  persistidos en la base de datos, no solo en el navegador.
 - Iconos SVG modernos (sin emojis).
 - Marcadores de la vista: anillo de inicio (verde), hoy y anillo de fin (rojo),
   tanto en la cabecera como en el mini calendario. El verde y el rojo se
@@ -203,5 +204,6 @@ tests/                 Suite completa
 | PATCH | `/api/horario/bloques/{id}` | Marcar completado/pendiente (solo permite `completado` si el horario del bloque ya pasó por completo; los bloques futuros devuelven 422) |
 | PUT | `/api/horario/bloques/{id}/mover` | Mover un bloque `{inicio}` (rechaza completados, destinos en el pasado o con solape; los recurrentes solo se mueven dentro de la ventana de su tarea; marca el bloque como fijado) |
 | DELETE | `/api/horario/bloques/{id}` | Eliminar un bloque |
+| GET/PUT | `/api/preferencias` | Leer / guardar preferencias `{tema, inicio_visible, fin_visible}` (clave-valor persistido en la base de datos) |
 
 Fechas en formato `"YYYY-MM-DD HH:MM:SS"` (hora local).

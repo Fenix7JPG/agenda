@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import db
-from .routers import auth, horario, tareas
+from .routers import auth, horario, preferencias, tareas
 from .security import COOKIE_NAME, SESSION_MAX_AGE_SECONDS, token_requiere_renovacion, validar_token
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -65,6 +65,7 @@ async def sesion_middleware(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(tareas.router)
 app.include_router(horario.router)
+app.include_router(preferencias.router)
 
 # ---------------------------------------------------------------------------
 # Frontend
