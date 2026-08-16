@@ -117,6 +117,13 @@ function tituloRango() {
   return `${f(a)} – ${f(b)}`;
 }
 
+/** True si el dispositivo es táctil (no hay drag and drop nativo). */
+function esTactil() {
+  return window.matchMedia("(pointer: coarse)").matches
+    || "ontouchstart" in window
+    || (navigator.maxTouchPoints || 0) > 0;
+}
+
 /** Mueve un extremo de la vista (anillo verde o rojo) a otra fecha. */
 function moverExtremo(tipo, fecha) {
   const destino = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
@@ -278,7 +285,7 @@ function renderCalendario(bloques) {
 
       // En pantallas táctiles no hay drag and drop: un toque abre el
       // selector de fecha para mover el anillo (misma acción, otro gesto).
-      if (window.matchMedia("(pointer: coarse)").matches) {
+      if (esTactil()) {
         head.addEventListener("click", () => abrirMover({
           titulo: esInicio ? "Mover inicio de la vista" : "Mover fin de la vista",
           meta: `Elige la nueva fecha del ${esInicio ? "inicio" : "fin"}.`,
@@ -564,6 +571,19 @@ function renderMiniCal() {
   cont.querySelectorAll("[data-mcdia]").forEach(d => {
     d.addEventListener("click", () => {
       const fecha = new Date(y, m, Number(d.dataset.mcdia));
+      const esInicio = d.classList.contains("ring-start");
+      const esFin = d.classList.contains("ring-end");
+      // En táctil, tocar un día con anillo mueve el anillo (selector de
+      // fecha) en lugar de navegar la vista a esa semana.
+      if (esTactil() && (esInicio || esFin)) {
+        abrirMover({
+          titulo: esInicio ? "Mover inicio de la vista" : "Mover fin de la vista",
+          meta: `Elige la nueva fecha del ${esInicio ? "inicio" : "fin"}.`,
+          valorInicial: fecha,
+          aplicar: (f) => moverExtremo(esInicio ? "inicio" : "fin", f),
+        });
+        return;
+      }
       inicioVisible = lunesDe(fecha);
       finVisible = new Date(inicioVisible);
       finVisible.setDate(inicioVisible.getDate() + 6);
