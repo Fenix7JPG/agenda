@@ -157,11 +157,19 @@ def _reservar_descanso(occupied: List[Tuple[datetime, datetime]],
 
 
 def _minutos_planificados_pasado(conn, tarea_id, ventana_inicio, ventana_fin, ahora):
-    """Suma los minutos de bloques existentes de una tarea dentro de una ventana,
-       pero solo aquellos que comienzan antes o en 'ahora' (ya realizados)."""
+    """Minutos ya dados por hechos: bloques completados o en curso.
+
+    Los bloques sin completar que quedaron por completo en el pasado NO
+    cuentan: el planificador los vuelve a agendar en lo que queda de la
+    ventana (reorganización de pendientes atrasados).
+    """
     rows = conn.execute(
-        "SELECT inicio, fin FROM horario_generado WHERE tarea_id=? AND inicio <= ? AND fin > ?",
-        (tarea_id, ahora.strftime(FORMATO_FECHA), ventana_inicio.strftime(FORMATO_FECHA))
+        "SELECT inicio, fin FROM horario_generado "
+        "WHERE tarea_id=? AND inicio <= ? AND fin > ? "
+        "AND (completado = 1 OR fin > ?)",
+        (tarea_id, ahora.strftime(FORMATO_FECHA),
+         ventana_inicio.strftime(FORMATO_FECHA),
+         ahora.strftime(FORMATO_FECHA))
     ).fetchall()
     total = 0
     for r in rows:
@@ -430,7 +438,7 @@ def generar_horario(db_path: str = "mi_base.db",
                             "titulo": t["titulo"],
                             "ventana_inicio": eff_start,
                             "ventana_fin": eff_end,
-                            "duracion_min": t["duracion_min"],
+                            "duracion_min": duracion_restante,
                             "bloque_entero": t["bloque_entero"],
                             "prioridad": t["prioridad"]
                         })

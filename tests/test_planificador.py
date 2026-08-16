@@ -130,6 +130,71 @@ class TestGenerarHorario(unittest.TestCase):
             bloques = self._leer_horario(conn)
             self.assertEqual(len(bloques), 2)
 
+    def test_recurrente_pendiente_en_el_pasado_se_reagenda_en_la_ventana(self):
+        """Un bloque recurrente sin completar que quedó en el pasado se
+        vuelve a agendar en lo que queda de la ventana de su ocurrencia."""
+        with BaseDeDatosTemporal() as conn:
+            self._insertar_tarea(conn, "Repaso semanal",
+                                "2026-07-26 10:00:00", "2026-07-27 20:00:00", 90,
+                                prioridad=2, bloque_entero=True, es_recurrente=True,
+                                recurrencia_min=1440,
+                                recurrencia_inicio="2026-07-26 10:00:00",
+                                recurrencia_fin="2026-07-26 10:01:00")
+            # Primera generación a las 08:00: bloque 08:00-09:30
+            generar_horario.generar_horario(DB_MEMORY, ahora=AHORA_REFERENCIA, conn=conn)
+            # Seis horas después: el bloque quedó en el pasado sin completar
+            tarde = AHORA_REFERENCIA + timedelta(hours=6)
+            bloques_creados = generar_horario.generar_horario(
+                DB_MEMORY, ahora=tarde, conn=conn)
+            self.assertEqual(bloques_creados, 1)
+            bloques = self._leer_horario(conn)
+            nuevos = [b for b in bloques if b["inicio"] >= "2026-07-27 14:00:00"]
+            self.assertEqual(len(nuevos), 1)
+            self.assertGreaterEqual(
+                datetime.strptime(nuevos[0]["inicio"], "%Y-%m-%d %H:%M:%S"), tarde)
+
+    def test_recurrente_completado_en_el_pasado_no_se_reagenda(self):
+        """Los bloques completados en el pasado cuentan como hechos y no se
+        vuelven a agendar al regenerar."""
+        with BaseDeDatosTemporal() as conn:
+            tarea_id = self._insertar_tarea(
+                conn, "Repaso semanal",
+                "2026-07-26 10:00:00", "2026-07-27 20:00:00", 90,
+                prioridad=2, bloque_entero=True, es_recurrente=True,
+                recurrencia_min=1440,
+                recurrencia_inicio="2026-07-26 10:00:00",
+                recurrencia_fin="2026-07-26 10:01:00")
+            generar_horario.generar_horario(DB_MEMORY, ahora=AHORA_REFERENCIA, conn=conn)
+            conn.execute(
+                "UPDATE horario_generado SET completado = 1 WHERE tarea_id = ?",
+                (tarea_id,))
+            conn.commit()
+            tarde = AHORA_REFERENCIA + timedelta(hours=6)
+            bloques_creados = generar_horario.generar_horario(
+                DB_MEMORY, ahora=tarde, conn=conn)
+            self.assertEqual(bloques_creados, 0)
+            bloques = self._leer_horario(conn)
+            self.assertEqual(len(bloques), 1)
+
+    def test_recurrente_con_bloque_en_curso_no_duplica_agendado(self):
+        """Un bloque en curso (empezó pero no terminó) cuenta como hecho:
+        al regenerar a mitad de bloque no se agenda otro entero encima."""
+        with BaseDeDatosTemporal() as conn:
+            self._insertar_tarea(conn, "Repaso semanal",
+                                 "2026-07-26 10:00:00", "2026-07-27 20:00:00", 90,
+                                 prioridad=2, bloque_entero=True, es_recurrente=True,
+                                 recurrencia_min=1440,
+                                 recurrencia_inicio="2026-07-26 10:00:00",
+                                 recurrencia_fin="2026-07-26 10:01:00")
+            generar_horario.generar_horario(DB_MEMORY, ahora=AHORA_REFERENCIA, conn=conn)
+            # A mitad del bloque (08:30): sigue en curso y sin completar
+            medio = AHORA_REFERENCIA + timedelta(minutes=30)
+            bloques_creados = generar_horario.generar_horario(
+                DB_MEMORY, ahora=medio, conn=conn)
+            self.assertEqual(bloques_creados, 0)
+            bloques = self._leer_horario(conn)
+            self.assertEqual(len(bloques), 1)
+
     def test_solapamiento_se_evita(self):
         with BaseDeDatosTemporal() as conn:
             self._insertar_tarea(conn, "T1",

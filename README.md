@@ -70,9 +70,10 @@ añade encima:
   para su inicio), después las vencidas, las que aún no tienen bloque
   asignado y al final completadas y canceladas. Cada etiqueta muestra la
   hora realmente asignada. Una tarea solo se puede marcar como Completada
-  cuando su horario asignado ya pasó por completo; las pendientes no
-  recurrentes que viven en el pasado se reorganizan al presionar
-  «Generar horario».
+  cuando su horario asignado ya pasó por completo; las pendientes que
+  viven en el pasado se reorganizan al presionar «Generar horario»: se
+  vuelven a agendar en lo que queda de su ventana (si les queda tiempo) y
+  el bloque viejo desaparece.
 - Completar solo en el pasado, también en el calendario: un bloque futuro
   no se puede marcar como completado. El popover esconde el botón y
   muestra un aviso mientras la actividad no termina, y la API lo rechaza
@@ -136,12 +137,14 @@ proyecto. Reglas principales:
   descanso; entre ciclos de la misma tarea solo si la ventana sigue
   pudiendo contenerla completa.
 - Regeneración completa: al generar, se borran los bloques futuros y se
-  re-planifica desde ahora (los bloques pasados y su marca de completado
-  se conservan).
-- Reorganización de tareas atrasadas: al generar, las tareas no recurrentes
-  pendientes que ya terminaron por completo se reubican a partir de ahora
-  conservando la duración de su ventana (si no se completaron, se vuelven
-  a agendar).
+  re-planifica desde ahora; los bloques pasados se conservan (excepto los
+  pendientes que se vuelven a agendar, que se mueven al futuro).
+- Reorganización de tareas atrasadas: al generar, las tareas pendientes con
+  bloques en el pasado se vuelven a agendar en lo que les queda de ventana
+  (también las recurrentes, dentro de su ocurrencia); los bloques pasados
+  sin completar de esas tareas se borran, y los completados y fijados se
+  conservan como historia. Las no recurrentes que ya terminaron por completo
+  se reubican a partir de ahora conservando la duración de su ventana.
 - Bloques fijados (movidos a mano): sobreviven a la regeneración, ocupan
   su hueco frente a otras tareas y su duración se descuenta de la tarea
   para no agendar el mismo trabajo dos veces (aunque queden a caballo del

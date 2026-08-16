@@ -21,12 +21,19 @@ def generar(_token: str = Depends(requiere_login)) -> ResultadoGeneracion:
         partes.append(
             f"{resumen['tareas_reorganizadas']} tarea(s) atrasadas reorganizadas"
         )
+    if resumen.get("bloques_pasados_reorganizados"):
+        partes.append(
+            f"{resumen['bloques_pasados_reorganizados']} pendiente(s) "
+            "del pasado re-agendado(s)"
+        )
     partes.append(f"{resumen['no_programadas']} tarea(s) sin espacio")
     return ResultadoGeneracion(
         bloques_insertados=resumen["bloques_insertados"],
         bloques_eliminados=resumen["bloques_eliminados"],
         no_programadas=resumen["no_programadas"],
         tareas_reorganizadas=resumen.get("tareas_reorganizadas", 0),
+        bloques_pasados_reorganizados=resumen.get(
+            "bloques_pasados_reorganizados", 0),
         mensaje="Horario regenerado: " + ", ".join(partes) + ".",
     )
 

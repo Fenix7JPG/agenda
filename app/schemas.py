@@ -150,6 +150,7 @@ class ResultadoGeneracion(BaseModel):
     bloques_eliminados: int
     no_programadas: int
     tareas_reorganizadas: int = 0
+    bloques_pasados_reorganizados: int = 0
     mensaje: str
 
 

@@ -302,6 +302,93 @@ def test_mover_bloque_recurrente_fuera_de_ventana_devuelve_409(cliente_logueado)
     assert "ventana" in respuesta.json()["detail"].lower()
 
 
+def test_generar_reorganiza_bloques_pasados_pendientes(cliente_logueado):
+    """Al regenerar, los bloques pasados sin completar de tareas re-agendadas
+    se borran y su tiempo se planifica hacia delante."""
+    from app.db import db
+
+    ahora = datetime.now()
+    inicio_v = ahora - timedelta(hours=2)
+    fin_v = inicio_v + timedelta(hours=24)
+    creada = cliente_logueado.post(
+        "/api/tareas",
+        json=_tarea("Estudio atrasado", 60, bloque_entero=True,
+                    fecha_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    fecha_fin=fin_v.strftime(FORMATO_FECHA)),
+    )
+    assert creada.status_code == 201
+    tarea_id = creada.json()["id"]
+
+    # Bloque pasado sin completar, como si se hubiera agendado antes
+    b_inicio = ahora - timedelta(hours=2)
+    b_fin = b_inicio + timedelta(minutes=60)
+    db.conn.execute(
+        "INSERT INTO horario_generado (tarea_id, inicio, fin) VALUES (?, ?, ?)",
+        (tarea_id, b_inicio.strftime(FORMATO_FECHA),
+         b_fin.strftime(FORMATO_FECHA)),
+    )
+    db.commit()
+
+    resumen = cliente_logueado.post("/api/horario/generar").json()
+    assert resumen["bloques_pasados_reorganizados"] >= 1
+
+    bloques = cliente_logueado.get("/api/horario/bloques").json()
+    de_la_tarea = [b for b in bloques if b["tarea_id"] == tarea_id]
+    # El bloque pasado pendiente desapareció y quedó agendado hacia delante
+    assert len(de_la_tarea) == 1
+    umbral = ahora - timedelta(minutes=1)
+    assert datetime.strptime(de_la_tarea[0]["inicio"], FORMATO_FECHA) > umbral
+
+
+def test_generar_conserva_pendientes_de_ventana_vencida(cliente_logueado):
+    """Un bloque pasado sin completar de una ocurrencia ya vencida (como una
+    clase) se conserva: no tiene ventana adonde posponerse, aunque la tarea
+    recurrente siga agendando sus ocurrencias futuras."""
+    from app.db import db
+
+    ahora = datetime.now()
+    # Clase semanal de 1 hora, anclada hace 8 días y 2 horas
+    rec_inicio = ahora - timedelta(days=8, hours=2)
+    cre = cliente_logueado.post(
+        "/api/tareas",
+        json=_tarea("Clase de repaso", 60, bloque_entero=True,
+                    es_recurrente=True,
+                    fecha_inicio=(rec_inicio + timedelta(hours=1)).strftime(
+                        FORMATO_FECHA),
+                    fecha_fin=(rec_inicio + timedelta(hours=2)).strftime(
+                        FORMATO_FECHA),
+                    recurrencia_inicio=rec_inicio.strftime(FORMATO_FECHA),
+                    recurrencia_min=10080,
+                    recurrencia_fin=(ahora + timedelta(days=14)).strftime(
+                        FORMATO_FECHA)),
+    )
+    assert cre.status_code == 201
+    tarea_id = cre.json()["id"]
+
+    # Bloque de la ocurrencia de la semana pasada, sin completar
+    b_ini = rec_inicio + timedelta(hours=1)
+    b_fin = rec_inicio + timedelta(hours=2)
+    db.conn.execute(
+        "INSERT INTO horario_generado (tarea_id, inicio, fin) VALUES (?, ?, ?)",
+        (tarea_id, b_ini.strftime(FORMATO_FECHA), b_fin.strftime(FORMATO_FECHA)),
+    )
+    db.commit()
+
+    resumen = cliente_logueado.post("/api/horario/generar").json()
+    assert resumen["bloques_insertados"] >= 1
+
+    bloques = cliente_logueado.get("/api/horario/bloques").json()
+    de_la_tarea = [b for b in bloques if b["tarea_id"] == tarea_id]
+    pasados = [b for b in de_la_tarea
+               if datetime.strptime(b["fin"], FORMATO_FECHA) < ahora]
+    # El bloque de la ocurrencia vencida sigue ahí (sin completar)
+    assert len(pasados) == 1 and pasados[0]["completado"] is False
+    # Y la ocurrencia actual se agendó hacia delante
+    futuros = [b for b in de_la_tarea
+               if datetime.strptime(b["inicio"], FORMATO_FECHA) > ahora]
+    assert len(futuros) == 1
+
+
 def test_ventana_efectiva_recurrente_se_desplaza_con_la_ocurrencia():
     """La ventana de un recurrente de la semana 2 es la de su ocurrencia."""
     from app.services import horario_service
