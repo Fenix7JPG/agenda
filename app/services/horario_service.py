@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 
 from ..config import settings
 from ..db import DDL_STATEMENTS, db
+from ..tz import ahora_local
 from .planificador import FORMATO_FECHA, generar_horario
 
 MEMORIA = ":memory:"
@@ -49,7 +50,7 @@ def _copiar_tabla(conn_mem: sqlite3.Connection, tabla: str) -> None:
 def generar(ahora: datetime | None = None) -> dict:
     """Regenera el horario y devuelve un resumen con los cambios aplicados."""
     if ahora is None:
-        ahora = datetime.now()
+        ahora = ahora_local()
     ahora_str = ahora.strftime(FORMATO_FECHA)
 
     # 0. Tareas no recurrentes pendientes que ya "viven en el pasado"
@@ -267,7 +268,7 @@ def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = Non
     reubique ni duplique su tiempo.
     """
     if ahora is None:
-        ahora = datetime.now()
+        ahora = ahora_local()
 
     bloque = db.fetch_one(
         "SELECT h.id, h.tarea_id, h.inicio, h.fin, h.completado, h.fijado, "
@@ -356,7 +357,7 @@ def actualizar_completado(
     pendiente) sí se permite en cualquier momento.
     """
     if ahora is None:
-        ahora = datetime.now()
+        ahora = ahora_local()
 
     if completado:
         bloque = db.fetch_one(

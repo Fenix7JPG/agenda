@@ -120,9 +120,20 @@ python run.py
 | `TURSO_URL` | URL de la base Turso (`libsql://...`) | — |
 | `TURSO_AUTH_TOKEN` | Token de autenticación de Turso | — |
 | `HORIZONTE_DIAS` | Días hacia delante que planifica el motor | `7` |
+| `APP_UTC_OFFSET` | Desfase en horas de la zona local del usuario (Perú: -5) | `-5` |
 
 Con `DB_MODE=turso` la app se conecta automáticamente a Turso; sin
 cambiar nada usa SQLite local.
+
+## Zona horaria
+
+La app trabaja con fechas en hora local del usuario (Perú, UTC-5, sin
+horario de verano). Todo el código obtiene «ahora» mediante
+`app/tz.py::ahora_local()`, que aplica `APP_UTC_OFFSET` a la hora UTC del
+sistema: así el horario se genera desde la hora correcta tanto en tu PC
+como en servidores remotos que corren en UTC (Render y similares). No
+uses `datetime.now()` directamente: en un servidor UTC devolvería una
+hora 5 horas adelantada.
 
 ## Cómo funciona el motor
 

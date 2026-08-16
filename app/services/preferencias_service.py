@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..db import db
+from ..tz import ahora_local
 
 FORMATO_FECHA = "%Y-%m-%d"
 CLAVES_PERMITIDAS = {"tema", "inicio_visible", "fin_visible"}
@@ -48,7 +49,7 @@ def guardar(datos: dict[str, str]) -> dict[str, str]:
     if ini and fin and ini > fin:
         raise ValueError("El inicio de la vista no puede ser posterior al fin")
 
-    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ahora = ahora_local().strftime("%Y-%m-%d %H:%M:%S")
     for clave, valor in datos.items():
         db.conn.execute(
             "INSERT INTO preferencias (clave, valor, actualizado_en) "

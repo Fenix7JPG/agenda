@@ -19,6 +19,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from io import BytesIO
 
+from ..tz import ahora_local
+
 from reportlab.lib import colors
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as pdfcanvas
@@ -223,7 +225,7 @@ def generar_pdf(inicio: str | None, fin: str | None) -> bytes:
     c.drawCentredString(
         ancho / 2,
         y_banda - 47,
-        f"{_rango_legible(a, b)}  ·  generado el {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        f"{_rango_legible(a, b)}  ·  generado el {ahora_local().strftime('%d/%m/%Y %H:%M')}",
     )
 
     # -------- Cabeceras de días --------

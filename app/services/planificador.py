@@ -31,6 +31,8 @@ import copy
 import math
 import sqlite3
 from datetime import datetime, timedelta
+
+from ..tz import ahora_local
 from typing import Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------
@@ -350,7 +352,7 @@ def generar_horario(db_path: str = "mi_base.db",
                     conn: Optional[sqlite3.Connection] = None,
                     horizonte_dias: Optional[int] = None) -> int:
     if ahora is None:
-        ahora = datetime.now()
+        ahora = ahora_local()
 
     cerrar_conexion = False
     if conn is None:

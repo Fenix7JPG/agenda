@@ -10,8 +10,9 @@ from datetime import datetime
 
 from ..db import db
 from ..schemas import FORMATO_FECHA, TareaCreate, TareaUpdate
+from ..tz import ahora_local
 
-_ahora = lambda: datetime.now().strftime(FORMATO_FECHA)  # noqa: E731
+_ahora = lambda: ahora_local().strftime(FORMATO_FECHA)  # noqa: E731
 
 
 class ErrorNegocio(ValueError):
@@ -137,7 +138,7 @@ def cambiar_estado(tarea_id: int, estado: str) -> dict | None:
         # usa la ventana de asignación de la tarea: una ventana amplia no
         # convierte a la tarea en "en curso" ni habilita completarla antes
         # de que pase su hora realmente asignada.
-        ahora = datetime.now()
+        ahora = ahora_local()
         if fila["es_recurrente"]:
             fin_vida = datetime.strptime(fila["recurrencia_fin"], FORMATO_FECHA)
         else:
