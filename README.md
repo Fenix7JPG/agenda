@@ -193,5 +193,3 @@ tests/                 Suite completa
 | DELETE | `/api/horario/bloques/{id}` | Eliminar un bloque |
 
 Fechas en formato `"YYYY-MM-DD HH:MM:SS"` (hora local).
-#   a g e n d a  
- 
