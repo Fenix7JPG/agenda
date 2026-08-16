@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingresar - Gestor de Tareas</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260816">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%231a73e8' d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM7 12h5v5H7z'/></svg>">
+</head>
+<body>
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="logo">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+          <path fill="#1a73e8" d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/>
+          <path fill="#1a73e8" d="M7 12h5v5H7z"/>
+          <rect x="14" y="12" width="3" height="3" fill="#fff"/>
+          <rect x="14" y="16.5" width="3" height="3" fill="#fff"/>
+        </svg>
+      </div>
+      <h1>Gestor de Tareas</h1>
+      <p>Acceso privado. Ingresa tu contraseña para continuar.</p>
+      <form id="login-form">
+        <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password" autofocus>
+        <div class="login-err" id="login-err"></div>
+        <button type="submit" class="btn primary">Ingresar</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Aplicar el tema guardado antes de pintar (evita parpadeo)
+    document.documentElement.dataset.theme = localStorage.getItem("tema") || "claro";
+
+    // Si ya hay sesión, ir directo a la aplicación
+    fetch("/api/auth/me", { cache: "no-store" }).then(r => r.json()).then(d => {
+      if (d.autenticado) location.href = "/app";
+    });
+
+    const form = document.getElementById("login-form");
+    const err = document.getElementById("login-err");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      const password = document.getElementById("password").value;
+      if (!password) { err.textContent = "Escribe la contraseña."; return; }
+      try {
+        const r = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        if (r.ok) { location.href = "/app"; }
+        else {
+          const det = await r.json().catch(() => ({}));
+          err.textContent = det.detail || "Contraseña incorrecta.";
+          document.getElementById("password").select();
+        }
+      } catch (ex) {
+        err.textContent = "No se pudo conectar con el servidor.";
+      }
+    });
+  </script>
+</body>
+</html>
