@@ -111,53 +111,25 @@ def generar(ahora: datetime | None = None) -> dict:
         (ahora_str,),
     )["c"])
 
-    tareas_replanificadas = sorted(
-        {tarea_id for tarea_id, _i, _f in bloques_nuevos}
-    )
-
     sentencias: list[str] = [
         "DELETE FROM horario_generado WHERE inicio >= "
         f"{db.sql_literal(ahora_str)} AND fijado = 0",
     ]
-    if tareas_replanificadas:
-        # Reorganización de pendientes atrasados: de las tareas re-agendadas
-        # ahora mismo se borran solo los bloques pasados sin completar cuya
-        # ventana efectiva sigue abierta (esos minutos se acaban de planificar
-        # de nuevo hacia delante). Los completados, los fijados y los de
-        # ventana ya vencida (clases, rutinas) se conservan como historia.
-        ids = ", ".join(str(i) for i in tareas_replanificadas)
-        ids_vencidas = {fila["id"] for fila in vencidas}
-        candidatas = db.fetch_all(
-            "SELECT h.id, h.tarea_id, h.inicio, t.es_recurrente, "
-            "t.fecha_inicio, "
-            "t.fecha_fin, t.recurrencia_inicio, t.recurrencia_min "
-            "FROM horario_generado h "
-            "JOIN tareas t ON t.id = h.tarea_id "
-            f"WHERE h.fin <= {db.sql_literal(ahora_str)} "
-            "AND h.completado = 0 AND h.fijado = 0 "
-            f"AND h.tarea_id IN ({ids})"
+    # Reorganización de pendientes atrasados: todo bloque del pasado sin
+    # completar se borra al generar. Los que tienen ventana abierta se
+    # vuelven a agendar hacia delante (el motor ya lo hizo en memoria); los
+    # de ventana vencida (clases, rutinas) desaparecen del calendario y su
+    # siguiente ocurrencia ya está agendada. Solo se conservan los
+    # completados, como historia.
+    n_pasados = int(db.fetch_one(
+        "SELECT COUNT(*) AS c FROM horario_generado "
+        f"WHERE fin <= {db.sql_literal(ahora_str)} AND completado = 0",
+    )["c"])
+    if n_pasados:
+        sentencias.append(
+            "DELETE FROM horario_generado WHERE fin <= "
+            f"{db.sql_literal(ahora_str)} AND completado = 0"
         )
-        borrables = []
-        for fila in candidatas:
-            if fila["tarea_id"] in ids_vencidas:
-                # La tarea entera se reubicó a partir de ahora
-                borrables.append(fila["id"])
-                continue
-            _vi, v_fin = _ventana_efectiva(
-                fila["inicio"], fila["es_recurrente"],
-                fila["fecha_inicio"], fila["fecha_fin"],
-                fila["recurrencia_inicio"], fila["recurrencia_min"],
-            )
-            if v_fin > ahora_str:
-                borrables.append(fila["id"])
-        n_pasados = len(borrables)
-        for bloque_id in borrables:
-            sentencias.append(
-                "DELETE FROM horario_generado WHERE id = "
-                f"{db.sql_literal(bloque_id)}"
-            )
-    else:
-        n_pasados = 0
 
     for tarea_id, inicio, fin in bloques_nuevos:
         sentencias.append(

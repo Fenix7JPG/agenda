@@ -340,10 +340,10 @@ def test_generar_reorganiza_bloques_pasados_pendientes(cliente_logueado):
     assert datetime.strptime(de_la_tarea[0]["inicio"], FORMATO_FECHA) > umbral
 
 
-def test_generar_conserva_pendientes_de_ventana_vencida(cliente_logueado):
-    """Un bloque pasado sin completar de una ocurrencia ya vencida (como una
-    clase) se conserva: no tiene ventana adonde posponerse, aunque la tarea
-    recurrente siga agendando sus ocurrencias futuras."""
+def test_generar_borra_todos_los_pendientes_del_pasado(cliente_logueado):
+    """Al generar, todo bloque del pasado sin completar desaparece, aunque
+    su ventana ya haya vencido: se siente como si se hubiera movido hacia
+    delante (su siguiente ocurrencia queda agendada)."""
     from app.db import db
 
     ahora = datetime.now()
@@ -375,18 +375,52 @@ def test_generar_conserva_pendientes_de_ventana_vencida(cliente_logueado):
     db.commit()
 
     resumen = cliente_logueado.post("/api/horario/generar").json()
-    assert resumen["bloques_insertados"] >= 1
+    assert resumen["bloques_pasados_reorganizados"] >= 1
+
+    bloques = cliente_logueado.get("/api/horario/bloques").json()
+    de_la_tarea = [b for b in bloques if b["tarea_id"] == tarea_id]
+    # El bloque de la ocurrencia vencida desapareció del calendario
+    pasados = [b for b in de_la_tarea
+               if datetime.strptime(b["fin"], FORMATO_FECHA) < ahora]
+    assert len(pasados) == 0
+    # Y la ocurrencia actual se agendó hacia delante
+    futuros = [b for b in de_la_tarea
+               if datetime.strptime(b["inicio"], FORMATO_FECHA) > ahora]
+    assert len(futuros) == 1
+
+
+def test_generar_conserva_bloques_completados_del_pasado(cliente_logueado):
+    """Los bloques del pasado completados se conservan como historia."""
+    from app.db import db
+
+    ahora = datetime.now()
+    inicio_v = ahora - timedelta(hours=2)
+    fin_v = inicio_v + timedelta(hours=24)
+    creada = cliente_logueado.post(
+        "/api/tareas",
+        json=_tarea("Estudio hecho", 60, bloque_entero=True,
+                    fecha_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    fecha_fin=fin_v.strftime(FORMATO_FECHA)),
+    )
+    assert creada.status_code == 201
+    tarea_id = creada.json()["id"]
+
+    b_ini = ahora - timedelta(hours=2)
+    b_fin = b_ini + timedelta(minutes=60)
+    db.conn.execute(
+        "INSERT INTO horario_generado (tarea_id, inicio, fin, completado) "
+        "VALUES (?, ?, ?, 1)",
+        (tarea_id, b_ini.strftime(FORMATO_FECHA), b_fin.strftime(FORMATO_FECHA)),
+    )
+    db.commit()
+
+    cliente_logueado.post("/api/horario/generar")
 
     bloques = cliente_logueado.get("/api/horario/bloques").json()
     de_la_tarea = [b for b in bloques if b["tarea_id"] == tarea_id]
     pasados = [b for b in de_la_tarea
                if datetime.strptime(b["fin"], FORMATO_FECHA) < ahora]
-    # El bloque de la ocurrencia vencida sigue ahí (sin completar)
-    assert len(pasados) == 1 and pasados[0]["completado"] is False
-    # Y la ocurrencia actual se agendó hacia delante
-    futuros = [b for b in de_la_tarea
-               if datetime.strptime(b["inicio"], FORMATO_FECHA) > ahora]
-    assert len(futuros) == 1
+    assert len(pasados) == 1 and pasados[0]["completado"] is True
 
 
 def test_ventana_efectiva_recurrente_se_desplaza_con_la_ocurrencia():

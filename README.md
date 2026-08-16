@@ -71,9 +71,11 @@ añade encima:
   asignado y al final completadas y canceladas. Cada etiqueta muestra la
   hora realmente asignada. Una tarea solo se puede marcar como Completada
   cuando su horario asignado ya pasó por completo; las pendientes que
-  viven en el pasado se reorganizan al presionar «Generar horario»: se
-  vuelven a agendar en lo que queda de su ventana (si les queda tiempo) y
-  el bloque viejo desaparece.
+  viven en el pasado desaparecen del calendario al presionar «Generar
+  horario»: se siente como si se hubieran movido más adelante en el
+  tiempo (los que tienen ventana se re-agendan en lo que les queda, y los
+  de ventana vencida se van porque su siguiente repetición ya está
+  agendada).
 - Completar solo en el pasado, también en el calendario: un bloque futuro
   no se puede marcar como completado. El popover esconde el botón y
   muestra un aviso mientras la actividad no termina, y la API lo rechaza
@@ -139,12 +141,14 @@ proyecto. Reglas principales:
 - Regeneración completa: al generar, se borran los bloques futuros y se
   re-planifica desde ahora; los bloques pasados se conservan (excepto los
   pendientes que se vuelven a agendar, que se mueven al futuro).
-- Reorganización de tareas atrasadas: al generar, las tareas pendientes con
-  bloques en el pasado se vuelven a agendar en lo que les queda de ventana
-  (también las recurrentes, dentro de su ocurrencia); los bloques pasados
-  sin completar de esas tareas se borran, y los completados y fijados se
-  conservan como historia. Las no recurrentes que ya terminaron por completo
-  se reubican a partir de ahora conservando la duración de su ventana.
+- Reorganización de tareas atrasadas: al generar, todos los bloques del
+  pasado sin completar se borran del calendario. Los que todavía tienen
+  ventana se vuelven a agendar dentro de ella (también los recurrentes,
+  dentro de su ocurrencia); los de ventana vencida desaparecen y su
+  siguiente repetición queda agendada. Los bloques completados se
+  conservan como historia. Las no recurrentes que ya terminaron por
+  completo se reubican a partir de ahora conservando la duración de su
+  ventana.
 - Bloques fijados (movidos a mano): sobreviven a la regeneración, ocupan
   su hueco frente a otras tareas y su duración se descuenta de la tarea
   para no agendar el mismo trabajo dos veces (aunque queden a caballo del

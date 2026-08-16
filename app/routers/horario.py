@@ -24,7 +24,7 @@ def generar(_token: str = Depends(requiere_login)) -> ResultadoGeneracion:
     if resumen.get("bloques_pasados_reorganizados"):
         partes.append(
             f"{resumen['bloques_pasados_reorganizados']} pendiente(s) "
-            "del pasado re-agendado(s)"
+            "del pasado re-ubicado(s)"
         )
     partes.append(f"{resumen['no_programadas']} tarea(s) sin espacio")
     return ResultadoGeneracion(
