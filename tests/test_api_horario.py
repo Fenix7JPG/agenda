@@ -237,26 +237,101 @@ def test_mover_bloque_reubica_marca_fijado_y_sobrevive(cliente_logueado):
     assert sum(1 for b in bloques if b["tarea_id"] == bloque["tarea_id"]) == 1
 
 
-def test_mover_bloque_recurrente_devuelve_409(cliente_logueado):
-    inicio_r = (datetime.now() - timedelta(days=1)).strftime(FORMATO_FECHA)
-    fin_r = (datetime.now() + timedelta(days=14)).strftime(FORMATO_FECHA)
+def test_mover_bloque_recurrente_dentro_de_su_ventana(cliente_logueado):
+    """Un recurrente con ventana ancha sí se mueve y queda fijado."""
+    inicio_v = datetime.now() + timedelta(days=2)
+    fin_v = inicio_v + timedelta(days=3)  # ventana ancha de 3 días
     cliente_logueado.post(
         "/api/tareas",
-        json=_tarea("Diaria", 30, bloque_entero=False, es_recurrente=True,
-                    recurrencia_min=1440, recurrencia_inicio=inicio_r,
-                    recurrencia_fin=fin_r),
+        json=_tarea("Repaso semanal", 30, bloque_entero=True, es_recurrente=True,
+                    fecha_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    fecha_fin=fin_v.strftime(FORMATO_FECHA),
+                    recurrencia_min=1440,
+                    recurrencia_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    recurrencia_fin=(inicio_v + timedelta(minutes=1)).strftime(FORMATO_FECHA)),
+    )
+    cliente_logueado.post("/api/horario/generar")
+    recurrentes = [b for b in cliente_logueado.get("/api/horario/bloques").json()
+                   if b["es_recurrente"]]
+    assert recurrentes, "debe haber bloques recurrentes generados"
+    bloque = recurrentes[0]
+
+    destino = (inicio_v + timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0)
+    respuesta = cliente_logueado.put(
+        f"/api/horario/bloques/{bloque['id']}/mover",
+        json={"inicio": destino.strftime(FORMATO_FECHA)})
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["inicio"] == destino.strftime(FORMATO_FECHA)
+    assert cuerpo["fijado"] is True
+    assert cuerpo["es_recurrente"] is True
+
+    # La regeneración no lo reubica ni duplica su tiempo
+    cliente_logueado.post("/api/horario/generar")
+    bloques = cliente_logueado.get("/api/horario/bloques").json()
+    de_la_tarea = [b for b in bloques if b["tarea_id"] == bloque["tarea_id"]]
+    assert len(de_la_tarea) == 1
+    assert de_la_tarea[0]["inicio"] == destino.strftime(FORMATO_FECHA)
+    assert de_la_tarea[0]["fijado"] is True
+
+
+def test_mover_bloque_recurrente_fuera_de_ventana_devuelve_409(cliente_logueado):
+    """Un recurrente con ventana exacta (sin holgura) no se puede posponer."""
+    inicio_v = datetime.now() + timedelta(days=2)
+    fin_v = inicio_v + timedelta(minutes=45)  # ventana exacta, como una clase
+    cliente_logueado.post(
+        "/api/tareas",
+        json=_tarea("Clase de prueba", 45, bloque_entero=True, es_recurrente=True,
+                    fecha_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    fecha_fin=fin_v.strftime(FORMATO_FECHA),
+                    recurrencia_min=1440,
+                    recurrencia_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    recurrencia_fin=(inicio_v + timedelta(minutes=1)).strftime(FORMATO_FECHA)),
     )
     cliente_logueado.post("/api/horario/generar")
     recurrentes = [b for b in cliente_logueado.get("/api/horario/bloques").json()
                    if b["es_recurrente"]]
     assert recurrentes, "debe haber bloques recurrentes generados"
 
-    destino = (datetime.now() + timedelta(days=2)).replace(
-        hour=10, minute=0, second=0, microsecond=0).strftime(FORMATO_FECHA)
+    destino = (inicio_v + timedelta(hours=2)).strftime(FORMATO_FECHA)
     respuesta = cliente_logueado.put(
         f"/api/horario/bloques/{recurrentes[0]['id']}/mover",
         json={"inicio": destino})
     assert respuesta.status_code == 409
+    assert "ventana" in respuesta.json()["detail"].lower()
+
+
+def test_ventana_efectiva_recurrente_se_desplaza_con_la_ocurrencia():
+    """La ventana de un recurrente de la semana 2 es la de su ocurrencia."""
+    from app.services import horario_service
+
+    # Como un Post-estudio real: ventana de la tarea en la semana 1 y el
+    # bloque en la ocurrencia de la semana 2 (7 días después).
+    v_ini, v_fin = horario_service._ventana_efectiva(
+        "2026-08-17 21:30:00", True,
+        "2026-08-10 10:00:00", "2026-08-17 09:15:00",
+        "2026-08-10 10:00:00", 10080,
+    )
+    assert v_ini == "2026-08-17 10:00:00"
+    assert v_fin == "2026-08-24 09:15:00"
+
+    # Ocurrencia 1: coincide con la ventana de la tarea
+    v_ini, v_fin = horario_service._ventana_efectiva(
+        "2026-08-10 20:00:00", True,
+        "2026-08-10 10:00:00", "2026-08-17 09:15:00",
+        "2026-08-10 10:00:00", 10080,
+    )
+    assert v_ini == "2026-08-10 10:00:00"
+    assert v_fin == "2026-08-17 09:15:00"
+
+    # No recurrente: su ventana es la de la tarea tal cual
+    v_ini, v_fin = horario_service._ventana_efectiva(
+        "2026-08-12 12:00:00", False,
+        "2026-08-10 10:00:00", "2026-08-17 09:15:00",
+        None, None,
+    )
+    assert (v_ini, v_fin) == ("2026-08-10 10:00:00", "2026-08-17 09:15:00")
 
 
 def test_mover_bloque_a_hueco_ocupado_devuelve_409(cliente_logueado):

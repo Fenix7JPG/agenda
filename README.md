@@ -24,8 +24,13 @@ añade encima:
   completo por semana y «Hoy» lo restaura a la semana actual.
 - Gestión manual del horario: arrastra un bloque y suéltalo en otro hueco
   para moverlo (se ajusta a bloques de 15 min). Los bloques recurrentes
-  tienen candado y no se pueden mover; los movidos a mano quedan fijados y
-  el motor los respeta al regenerar (no los reubica ni duplica su tiempo).
+  también se pueden mover, pero solo dentro de la ventana de su ocurrencia
+  (la ventana fecha inicio - fecha fin de la tarea, desplazada con cada
+  repetición): las actividades con ventana exacta, como las clases, no
+  tienen holgura y no se pueden posponer, mientras que las de ventana
+  ancha (pre-estudio, post-estudio) sí. Los bloques movidos a mano quedan
+  fijados y el motor los respeta al regenerar (no los reubica ni duplica
+  su tiempo).
 - Adaptación móvil: por debajo de 900 px el panel de «Mis tareas» se
   convierte en un drawer que se desliza desde la izquierda con el botón de
   lista de la barra superior. Los controles crecen a una zona táctil mínima
@@ -189,7 +194,7 @@ tests/                 Suite completa
 | POST | `/api/horario/generar` | Ejecuta el motor |
 | GET | `/api/horario/bloques?inicio=&fin=` | Bloques del calendario |
 | PATCH | `/api/horario/bloques/{id}` | Marcar completado/pendiente (solo permite `completado` si el horario del bloque ya pasó por completo; los bloques futuros devuelven 422) |
-| PUT | `/api/horario/bloques/{id}/mover` | Mover un bloque `{inicio}` (rechaza recurrentes, completados, destinos en el pasado o con solape; marca el bloque como fijado) |
+| PUT | `/api/horario/bloques/{id}/mover` | Mover un bloque `{inicio}` (rechaza completados, destinos en el pasado o con solape; los recurrentes solo se mueven dentro de la ventana de su tarea; marca el bloque como fijado) |
 | DELETE | `/api/horario/bloques/{id}` | Eliminar un bloque |
 
 Fechas en formato `"YYYY-MM-DD HH:MM:SS"` (hora local).

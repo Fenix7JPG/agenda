@@ -25,6 +25,7 @@ let anilloArrastrado = null;              // "inicio" | "fin" durante el arrastr
 // ---------------------- Iconos SVG (sin emojis) ----------------------
 const SVG_ATTR = "fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"";
 const ICONO_CANDADO = `<svg class="ic" width="12" height="12" viewBox="0 0 24 24" ${SVG_ATTR}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+const ICONO_RECURRENCIA = `<svg class="ic" width="12" height="12" viewBox="0 0 24 24" ${SVG_ATTR}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
 const ICONO_RELOJ = `<svg class="ic" width="12" height="12" viewBox="0 0 24 24" ${SVG_ATTR}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 const ICONO_PIN = `<svg class="ic" width="11" height="11" viewBox="0 0 24 24" ${SVG_ATTR}><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
 const ICONO_CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" ${SVG_ATTR}><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -47,6 +48,15 @@ function fromFmt(s) {
   const [y, m, d] = fecha.split("-").map(Number);
   const [hh, mm, ss] = hora.split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm, ss || 0);
+}
+
+function fmtVentana(ini, fin) {
+  // "2026-08-11 11:30:00" -> "11/08 11:30 al 18/08 10:00"
+  const a = fromFmt(ini), b = fromFmt(fin);
+  if (!a || !b) return "";
+  const f = (d) =>
+    `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${f(a)} al ${f(b)}`;
 }
 
 function toLocalInput(d) {
@@ -343,7 +353,6 @@ function renderCalendario(bloques) {
       el.className = `event prio-${e.prioridad || 3}` +
         (e.completado ? " done" : "") +
         (corto ? " compact" : "") +
-        (e.es_recurrente ? " locked" : "") +
         (e.fijado && !e.es_recurrente ? " fijado" : "");
       el.style.top = `${top + 2}px`;
       el.style.height = `${durPx - 4}px`;
@@ -353,18 +362,22 @@ function renderCalendario(bloques) {
         ? `<span class="e-time">${fmtHora(e.start)}</span><span class="e-title">${escapeHtml(e.titulo)}</span>`
         : `<div class="e-title">${escapeHtml(e.titulo)}</div><div class="e-time">${fmtSegRango(e.start, e.end)}</div>`;
       if (e.es_recurrente) {
-        el.innerHTML += `<span class="e-lock" title="Bloque recurrente: no se puede mover">${ICONO_CANDADO}</span>`;
-        el.title = `${e.titulo} · Bloque recurrente: no se puede mover`;
+        const ventana = e.ventana_inicio
+          ? ` (${fmtVentana(e.ventana_inicio, e.ventana_fin)})` : "";
+        el.innerHTML += `<span class="e-lock" title="Bloque recurrente: solo se mueve dentro de su ventana${ventana}">${ICONO_RECURRENCIA}</span>`;
+        el.title = `${e.titulo} · Bloque recurrente: se mueve solo dentro de su ventana${ventana}`;
       } else if (e.fijado) {
         el.innerHTML += `<span class="e-pin" title="Movido a mano: se conserva al regenerar el horario">${ICONO_PIN}</span>`;
         el.title = e.titulo;
       }
       el.addEventListener("click", (ev) => abrirPopover(ev, e));
 
-      // Drag and drop para mover (no en recurrentes ni completados)
-      if (!e.es_recurrente && !e.completado) {
+      // Drag and drop para mover (todos los bloques, salvo completados)
+      if (!e.completado) {
         el.draggable = true;
-        el.title = `${e.titulo} · Arrastra para mover`;
+        el.title = e.es_recurrente
+          ? `${e.titulo} · Arrastra para mover (solo dentro de su ventana)`
+          : `${e.titulo} · Arrastra para mover`;
         el.addEventListener("dragstart", (ev) => {
           bloqueArrastrado = e;
           ev.dataTransfer.setData("text/plain", String(e.id));
@@ -801,18 +814,18 @@ function abrirPopover(ev, bloque) {
     <div class="p-meta">
       ${DIAS_LARGO[(bloque.start.getDay() + 6) % 7]} ${bloque.start.getDate()} · ${fmtRango(bloque.start, bloque.end)}
       <br>Prioridad: ${PRIO_NOMBRE[bloque.prioridad] || bloque.prioridad}
-      ${bloque.fijado && !bloque.es_recurrente ? "<br>Bloque movido a mano" : ""}
+      ${bloque.fijado ? "<br>Bloque movido a mano" : ""}
       ${bloque.completado ? "<br><b>Completado</b>" : ""}
     </div>
-    ${bloque.es_recurrente ? `<div class="p-lock-note">${ICONO_CANDADO} Bloque recurrente: no se puede mover</div>` : ""}
+    ${bloque.es_recurrente ? `<div class="p-lock-note">${ICONO_RECURRENCIA} Bloque recurrente: solo se mueve dentro de su ventana${bloque.ventana_inicio ? ` (del ${fmtVentana(bloque.ventana_inicio, bloque.ventana_fin)})` : ""}</div>` : ""}
     ${sinCompletar ? `<div class="p-lock-note">${ICONO_RELOJ} No se puede completar: la actividad aún no termina</div>` : ""}
     <div class="p-actions">
       ${sinCompletar ? "" : `<button class="p-act" data-act="toggle">${ICONO_CHECK} ${bloque.completado ? "Marcar pendiente" : "Marcar completado"}</button>`}
-      ${!bloque.es_recurrente && !bloque.completado ? `<button class="p-act" data-act="mover">${ICONO_MOVER} Mover</button>` : ""}
+      ${!bloque.completado ? `<button class="p-act" data-act="mover">${ICONO_MOVER} Mover</button>` : ""}
       ${tarea ? `<button class="p-act" data-act="editar">${ICONO_LAPIZ} Editar tarea</button>` : ""}
       <button class="p-act danger" data-act="eliminar">${ICONO_PAPELERA} Eliminar bloque</button>
     </div>
-    ${!bloque.es_recurrente && !bloque.completado ? `<div class="p-hint">${ICONO_MOVER} Arrastra el bloque o pulsa Mover para cambiarlo de hora</div>` : ""}`;
+    ${!bloque.completado ? `<div class="p-hint">${ICONO_MOVER} Arrastra el bloque o pulsa Mover para cambiarlo de hora${bloque.es_recurrente ? " (recurrente: solo dentro de su ventana)" : ""}</div>` : ""}`;
 
   const movil = window.innerWidth <= 480;
   const rect = ev.target.getBoundingClientRect();
@@ -846,7 +859,9 @@ function abrirPopover(ev, bloque) {
         cerrarPopover();
         abrirMover({
           titulo: "Mover bloque",
-          meta: `Se conserva su duración. Horario actual: ${fmtRango(bloque.start, bloque.end)}.`,
+          meta: `Se conserva su duración. Horario actual: ${fmtRango(bloque.start, bloque.end)}.` +
+            (bloque.es_recurrente && bloque.ventana_inicio
+              ? ` Ventana permitida: ${fmtVentana(bloque.ventana_inicio, bloque.ventana_fin)}.` : ""),
           valorInicial: bloque.start,
           aplicar: async (inicio) => {
             try {

@@ -135,11 +135,44 @@ def generar(ahora: datetime | None = None) -> dict:
     }
 
 
+def _ventana_efectiva(
+    inicio_bloque: str,
+    es_recurrente: bool,
+    f_ini: str,
+    f_fin: str,
+    rec_ini: str | None = None,
+    rec_min: int | None = None,
+) -> tuple[str, str]:
+    """Ventana en la que se puede mover un bloque.
+
+    Para los recurrentes es la ventana de SU ocurrencia: la ventana de la
+    tarea (fecha_inicio a fecha_fin) desplazada una recurrencia por cada
+    repetición. Así un pre-estudio de la semana 2 se puede mover dentro de
+    la semana 2, no dentro de la semana 1.
+    """
+    if not es_recurrente or not rec_ini or not rec_min:
+        return f_ini, f_fin
+    inicio = datetime.strptime(inicio_bloque, FORMATO_FECHA)
+    r0 = datetime.strptime(rec_ini, FORMATO_FECHA)
+    dur = datetime.strptime(f_fin, FORMATO_FECHA) - datetime.strptime(f_ini, FORMATO_FECHA)
+    k = max(0, (inicio - r0) // timedelta(minutes=rec_min))
+    v_ini = r0 + k * timedelta(minutes=rec_min)
+    v_fin = v_ini + dur
+    return v_ini.strftime(FORMATO_FECHA), v_fin.strftime(FORMATO_FECHA)
+
+
 def listar_bloques(inicio: str | None = None, fin: str | None = None) -> list[dict]:
-    """Bloques del horario con título, prioridad, recurrencia y fijado."""
+    """Bloques del horario con título, prioridad, recurrencia y fijado.
+
+    Incluye la ventana efectiva de cada bloque (para los recurrentes, la
+    de su ocurrencia) para que el frontend pueda mostrar cuánto margen hay
+    al moverlo.
+    """
     sql = """
         SELECT h.id, h.tarea_id, h.inicio, h.fin, h.completado, h.fijado,
-               t.titulo, t.prioridad, t.es_recurrente
+               t.titulo, t.prioridad, t.es_recurrente,
+               t.fecha_inicio, t.fecha_fin,
+               t.recurrencia_inicio, t.recurrencia_min
         FROM horario_generado h
         JOIN tareas t ON t.id = h.tarea_id
     """
@@ -154,20 +187,28 @@ def listar_bloques(inicio: str | None = None, fin: str | None = None) -> list[di
         sql += " WHERE " + " AND ".join(condiciones)
     sql += " ORDER BY h.inicio"
     filas = db.fetch_all(sql, params)
-    return [
-        {
-            "id": f["id"],
-            "tarea_id": f["tarea_id"],
-            "inicio": f["inicio"],
-            "fin": f["fin"],
-            "completado": bool(f["completado"]),
-            "fijado": bool(f["fijado"]),
-            "es_recurrente": bool(f["es_recurrente"]),
-            "titulo": f["titulo"],
-            "prioridad": f["prioridad"],
-        }
-        for f in filas
-    ]
+    salida = []
+    for f in filas:
+        ventana_ini, ventana_fin = _ventana_efectiva(
+            f["inicio"], bool(f["es_recurrente"]), f["fecha_inicio"],
+            f["fecha_fin"], f["recurrencia_inicio"], f["recurrencia_min"],
+        )
+        salida.append(
+            {
+                "id": f["id"],
+                "tarea_id": f["tarea_id"],
+                "inicio": f["inicio"],
+                "fin": f["fin"],
+                "completado": bool(f["completado"]),
+                "fijado": bool(f["fijado"]),
+                "es_recurrente": bool(f["es_recurrente"]),
+                "titulo": f["titulo"],
+                "prioridad": f["prioridad"],
+                "ventana_inicio": ventana_ini,
+                "ventana_fin": ventana_fin,
+            }
+        )
+    return salida
 
 
 class ErrorMoverBloque(Exception):
@@ -182,17 +223,22 @@ class ErrorMoverBloque(Exception):
 def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = None) -> dict:
     """Mueve un bloque a una hora nueva (gestión manual del horario).
 
-    Reglas: los bloques recurrentes no se pueden mover (candado); los
-    completados tampoco; el destino no puede estar en el pasado ni
-    solaparse con otro bloque. El bloque queda marcado como fijado para
-    que la regeneración del horario no lo reubique.
+    Reglas: los completados no se pueden mover; el destino no puede estar
+    en el pasado ni solaparse con otro bloque. Los bloques recurrentes sí
+    se pueden mover, pero solo dentro de la ventana de su tarea
+    (fecha_inicio a fecha_fin): las actividades con ventana exacta (como
+    las clases) no tienen holgura y no se podrán posponer, mientras que
+    las de ventana ancha (pre-estudio, post-estudio) sí. El bloque queda
+    marcado como fijado para que la regeneración del horario no lo
+    reubique ni duplique su tiempo.
     """
     if ahora is None:
         ahora = datetime.now()
 
     bloque = db.fetch_one(
         "SELECT h.id, h.tarea_id, h.inicio, h.fin, h.completado, h.fijado, "
-        "t.es_recurrente, t.titulo, t.prioridad "
+        "t.es_recurrente, t.titulo, t.prioridad, t.fecha_inicio, t.fecha_fin, "
+        "t.recurrencia_inicio, t.recurrencia_min "
         "FROM horario_generado h JOIN tareas t ON t.id = h.tarea_id "
         "WHERE h.id = ?",
         (bloque_id,),
@@ -201,9 +247,6 @@ def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = Non
         raise ErrorMoverBloque(404, "Bloque no encontrado")
     if bloque["completado"]:
         raise ErrorMoverBloque(409, "No se puede mover un bloque completado")
-    if bloque["es_recurrente"]:
-        raise ErrorMoverBloque(
-            409, "Este bloque es recurrente y no se puede mover")
 
     inicio_orig = datetime.strptime(bloque["inicio"], FORMATO_FECHA)
     fin_orig = datetime.strptime(bloque["fin"], FORMATO_FECHA)
@@ -211,6 +254,24 @@ def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = Non
 
     inicio_nuevo = datetime.strptime(nuevo_inicio, FORMATO_FECHA)
     fin_nuevo = inicio_nuevo + timedelta(minutes=duracion)
+
+    if bloque["es_recurrente"]:
+        # Los recurrentes solo se mueven dentro de la ventana de SU
+        # ocurrencia: si la ventana es exacta (sin holgura, como una
+        # clase), no hay dónde mover.
+        v_ini_s, v_fin_s = _ventana_efectiva(
+            bloque["inicio"], True, bloque["fecha_inicio"], bloque["fecha_fin"],
+            bloque["recurrencia_inicio"], bloque["recurrencia_min"],
+        )
+        v_ini = datetime.strptime(v_ini_s, FORMATO_FECHA)
+        v_fin = datetime.strptime(v_fin_s, FORMATO_FECHA)
+        if inicio_nuevo < v_ini or fin_nuevo > v_fin:
+            raise ErrorMoverBloque(
+                409,
+                "Este bloque recurrente solo se puede mover dentro de su "
+                f"ventana: del {v_ini.strftime('%d/%m %H:%M')} al "
+                f"{v_fin.strftime('%d/%m %H:%M')}",
+            )
 
     if inicio_nuevo < ahora:
         raise ErrorMoverBloque(400, "No se puede mover un bloque al pasado")
@@ -230,6 +291,11 @@ def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = Non
          fin_nuevo.strftime(FORMATO_FECHA), bloque_id),
     )
     db.commit()
+    ventana_ini, ventana_fin = _ventana_efectiva(
+        inicio_nuevo.strftime(FORMATO_FECHA), bool(bloque["es_recurrente"]),
+        bloque["fecha_inicio"], bloque["fecha_fin"],
+        bloque["recurrencia_inicio"], bloque["recurrencia_min"],
+    )
     return {
         "id": bloque["id"],
         "tarea_id": bloque["tarea_id"],
@@ -240,6 +306,8 @@ def mover_bloque(bloque_id: int, nuevo_inicio: str, ahora: datetime | None = Non
         "es_recurrente": bool(bloque["es_recurrente"]),
         "titulo": bloque["titulo"],
         "prioridad": bloque["prioridad"],
+        "ventana_inicio": ventana_ini,
+        "ventana_fin": ventana_fin,
     }
 
 
