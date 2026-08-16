@@ -389,6 +389,45 @@ def test_generar_borra_todos_los_pendientes_del_pasado(cliente_logueado):
     assert len(futuros) == 1
 
 
+def test_generar_reubica_bloque_en_curso_sin_completar(cliente_logueado):
+    """El caso real reportado: un bloque en curso sin completar no se queda
+    clavado en su hora; al generar se borra y la tarea se agende de
+    inmediato desde ahora."""
+    from app.db import db
+
+    ahora = datetime.now()
+    inicio_v = ahora - timedelta(hours=2)
+    fin_v = inicio_v + timedelta(hours=24)
+    creada = cliente_logueado.post(
+        "/api/tareas",
+        json=_tarea("Estudio en curso", 60, bloque_entero=True,
+                    fecha_inicio=inicio_v.strftime(FORMATO_FECHA),
+                    fecha_fin=fin_v.strftime(FORMATO_FECHA)),
+    )
+    assert creada.status_code == 201
+    tarea_id = creada.json()["id"]
+
+    # Bloque en curso: empezó hace 30 min y termina en 30 min
+    b_ini = ahora - timedelta(minutes=30)
+    b_fin = ahora + timedelta(minutes=30)
+    db.conn.execute(
+        "INSERT INTO horario_generado (tarea_id, inicio, fin) VALUES (?, ?, ?)",
+        (tarea_id, b_ini.strftime(FORMATO_FECHA), b_fin.strftime(FORMATO_FECHA)),
+    )
+    db.commit()
+
+    resumen = cliente_logueado.post("/api/horario/generar").json()
+    assert resumen["bloques_pasados_reorganizados"] >= 1
+
+    bloques = cliente_logueado.get("/api/horario/bloques").json()
+    de_la_tarea = [b for b in bloques if b["tarea_id"] == tarea_id]
+    # El bloque en curso desapareció y el nuevo arranca ya mismo
+    assert len(de_la_tarea) == 1
+    umbral = ahora - timedelta(minutes=1)
+    inicio_nuevo = datetime.strptime(de_la_tarea[0]["inicio"], FORMATO_FECHA)
+    assert inicio_nuevo >= umbral
+
+
 def test_generar_conserva_bloques_completados_del_pasado(cliente_logueado):
     """Los bloques del pasado completados se conservan como historia."""
     from app.db import db

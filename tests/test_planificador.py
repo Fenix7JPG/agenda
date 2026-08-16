@@ -176,9 +176,9 @@ class TestGenerarHorario(unittest.TestCase):
             bloques = self._leer_horario(conn)
             self.assertEqual(len(bloques), 1)
 
-    def test_recurrente_con_bloque_en_curso_no_duplica_agendado(self):
-        """Un bloque en curso (empezó pero no terminó) cuenta como hecho:
-        al regenerar a mitad de bloque no se agenda otro entero encima."""
+    def test_recurrente_con_bloque_en_curso_se_reagenda_completo(self):
+        """Un bloque en curso sin completar no cuenta como hecho: al
+        regenerar se agendan de nuevo sus minutos completos."""
         with BaseDeDatosTemporal() as conn:
             self._insertar_tarea(conn, "Repaso semanal",
                                  "2026-07-26 10:00:00", "2026-07-27 20:00:00", 90,
@@ -191,9 +191,13 @@ class TestGenerarHorario(unittest.TestCase):
             medio = AHORA_REFERENCIA + timedelta(minutes=30)
             bloques_creados = generar_horario.generar_horario(
                 DB_MEMORY, ahora=medio, conn=conn)
-            self.assertEqual(bloques_creados, 0)
+            # El motor re-agenda los 90 min completos (el bloque en curso
+            # ocupa su hueco en el sandbox, así que el nuevo va después)
+            self.assertEqual(bloques_creados, 1)
             bloques = self._leer_horario(conn)
-            self.assertEqual(len(bloques), 1)
+            self.assertEqual(len(bloques), 2)
+            nuevos = [b for b in bloques if b["inicio"] >= "2026-07-27 09:30:00"]
+            self.assertEqual(len(nuevos), 1)
 
     def test_solapamiento_se_evita(self):
         with BaseDeDatosTemporal() as conn:

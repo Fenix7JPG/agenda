@@ -83,6 +83,17 @@ def generar(ahora: datetime | None = None) -> dict:
     for tabla in ("tareas", "horario_generado", "tareas_no_programadas"):
         _copiar_tabla(mem, tabla)
 
+    # 1.5 Reorganización de pendientes: se liberan en el sandbox los bloques
+    #     sin completar que ya empezaron (pasados y en curso), para que el
+    #     motor vea esos huecos libres y agende de inmediato desde 'ahora'.
+    #     Solo se conservan los completados (historia) y los fijados.
+    mem.execute(
+        "DELETE FROM horario_generado "
+        "WHERE inicio <= ? AND completado = 0 AND fijado = 0",
+        (ahora_str,),
+    )
+    mem.commit()
+
     # 2. Motor sobre la memoria
     generar_horario(
         MEMORIA, ahora=ahora, conn=mem, horizonte_dias=settings.horizonte_dias
@@ -115,20 +126,23 @@ def generar(ahora: datetime | None = None) -> dict:
         "DELETE FROM horario_generado WHERE inicio >= "
         f"{db.sql_literal(ahora_str)} AND fijado = 0",
     ]
-    # Reorganización de pendientes atrasados: todo bloque del pasado sin
-    # completar se borra al generar. Los que tienen ventana abierta se
-    # vuelven a agendar hacia delante (el motor ya lo hizo en memoria); los
-    # de ventana vencida (clases, rutinas) desaparecen del calendario y su
-    # siguiente ocurrencia ya está agendada. Solo se conservan los
-    # completados, como historia.
+    # Reorganización de pendientes atrasados: todo bloque sin completar que
+    # ya empezó (pasado o en curso) se borra al generar. Los que tienen
+    # ventana abierta se vuelven a agendar hacia delante (el motor ya lo
+    # hizo en memoria, con los huecos liberados); los de ventana vencida
+    # (clases, rutinas) desaparecen del calendario y su siguiente
+    # ocurrencia ya está agendada. Solo se conservan los completados
+    # (historia) y los fijados.
     n_pasados = int(db.fetch_one(
         "SELECT COUNT(*) AS c FROM horario_generado "
-        f"WHERE fin <= {db.sql_literal(ahora_str)} AND completado = 0",
+        "WHERE inicio <= ? AND completado = 0 AND fijado = 0",
+        (ahora_str,),
     )["c"])
     if n_pasados:
         sentencias.append(
-            "DELETE FROM horario_generado WHERE fin <= "
-            f"{db.sql_literal(ahora_str)} AND completado = 0"
+            "DELETE FROM horario_generado WHERE inicio <= "
+            f"{db.sql_literal(ahora_str)} "
+            "AND completado = 0 AND fijado = 0"
         )
 
     for tarea_id, inicio, fin in bloques_nuevos:
